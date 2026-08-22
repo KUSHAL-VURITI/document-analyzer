@@ -15,14 +15,15 @@ export async function POST(req: Request) {
     return new Response('Missing document text', { status: 400 });
   }
 
-  // Check if API key is present, if not, mock the stream
+  // Check if API key is present, if not, return explicit error
   if (!process.env.GROQ_API_KEY) {
-    // Return mock data using the ai-sdk stream format (0:"text"\n)
-    const mockText = "API Key is missing for the demo. But I can tell you that based on the document, revenue grew by 15% due to the enterprise segment. [Page 1]";
-    return new Response(`0:"${mockText}"\n`, { 
-      status: 200,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-    });
+    return new Response(
+      "AI service is currently unavailable. Please configure GROQ_API_KEY in your hosting environment variables.",
+      { 
+        status: 503,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      }
+    );
   }
 
   const systemPrompt = `You are a helpful and precise assistant answering questions about a specific document.
@@ -34,11 +35,11 @@ Use the format [Page X] at the end of the sentence.
 The document text contains markers like "---PAGE_BREAK---" to separate pages. Page 1 is the text before the first break.
 
 Document Text:
-${documentText.slice(0, 4000)}
+${documentText.slice(0, 10000)}
 `;
 
   const result = await streamText({
-    model: groq('openai/gpt-oss-120b'),
+    model: groq('llama-3.3-70b-versatile'),
     system: systemPrompt,
     messages,
   });

@@ -19,10 +19,10 @@ export async function generateDocumentSummary(
   // Groq free tier has very tight token limits (8000 total including input+output).
   // We truncate aggressively and use generateText with manual JSON parsing
   // instead of generateObject (which bloats the prompt with schema instructions).
-  const truncated = text.slice(0, 4000);
+  const truncated = text.slice(0, 10000);
 
   const { text: rawOutput } = await generateText({
-    model: groq("openai/gpt-oss-120b"),
+    model: groq("llama-3.3-70b-versatile"),
     prompt: `${systemPrompt}
 
 Mode: ${mode}

@@ -91,12 +91,12 @@ export function Workspace() {
             body: JSON.stringify({ text: finalExtractedText, mode: 'medium' })
           });
           
-          if (!summaryRes.ok) throw new Error("Failed to generate summary.");
+          const summaryData = await summaryRes.json();
+          if (!summaryRes.ok || summaryData.error) {
+            throw new Error(summaryData.error || "AI service is currently unavailable, please try again.");
+          }
           
           setStatus('summarizing');
-          const summaryData = await summaryRes.json();
-          if (summaryData.error) throw new Error(summaryData.error);
-          
           useDocumentStore.getState().setSummaryData(summaryData);
           setStatus('done');
           

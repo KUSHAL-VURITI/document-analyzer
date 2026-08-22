@@ -11,21 +11,13 @@ export async function POST(req: NextRequest) {
     }
     
     if (!process.env.GROQ_API_KEY) {
-      // Return mock data for the demo if API key is missing
-      console.warn("No Groq API key found. Returning mock summary data.");
-      await new Promise(r => setTimeout(r, 2000));
-      return NextResponse.json({
-        summary: `[Mock ${mode} Summary] This document discusses various financial metrics and strategic initiatives for Q4. It highlights a 15% increase in revenue compared to the previous quarter, driven largely by the enterprise segment.`,
-        keyPoints: [
-          "Q4 revenue increased by 15%",
-          "Enterprise segment is the primary growth driver",
-          "Operating costs decreased by 2%"
-        ],
-        documentType: "Financial Report"
-      });
+      return NextResponse.json(
+        { error: "AI service is currently unavailable. Please configure GROQ_API_KEY in your hosting environment variables." },
+        { status: 503 }
+      );
     }
 
-    // Limit text length to prevent context window overflow (e.g., limit to ~30k chars for safety)
+    // Limit text length to prevent context window overflow
     const truncatedText = text.slice(0, 30000);
 
     const result = await generateDocumentSummary(
@@ -35,8 +27,11 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json(result);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Summarization error:", error);
-    return NextResponse.json({ error: "Failed to generate summary" }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || "Failed to generate summary from AI service." }, 
+      { status: 500 }
+    );
   }
 }
