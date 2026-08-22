@@ -8,6 +8,8 @@ import { runClientOCR } from "@/lib/extract/ocr";
 import { AiPanel } from "@/components/workspace/AiPanel";
 import { DocumentViewer } from "@/components/workspace/DocumentViewer";
 
+import { extractPdfTextClient } from "@/lib/extract/clientExtract";
+
 export function Workspace() {
   const searchParams = useSearchParams();
   const { file, status, setStatus, setExtractedText, setErrorMessage } = useDocumentStore();
@@ -21,35 +23,59 @@ export function Workspace() {
       const processDocument = async () => {
         try {
           setStatus('uploading');
-          await new Promise(r => setTimeout(r, 600));
+          await new Promise(r => setTimeout(r, 400));
           
           setStatus('extracting');
-          
-          const formData = new FormData();
-          formData.append('file', file);
-          
-          const res = await fetch('/api/extract', {
-            method: 'POST',
-            body: formData
-          });
-          
-          if (!res.ok) throw new Error("Failed to communicate with extraction server.");
-          
-          const data = await res.json();
           let finalExtractedText = "";
-          
-          if (data.status === 'requires_ocr') {
+
+          if (file.type.startsWith("image/")) {
             setStatus('ocr');
             try {
               finalExtractedText = await runClientOCR(file);
             } catch (ocrError: any) {
               console.error("OCR Error:", ocrError);
-              throw new Error("We couldn't extract readable text from this document. The image may be too complex or blurry.");
+              throw new Error("We couldn't extract readable text from this image.");
             }
-          } else if (data.status === 'success') {
-            finalExtractedText = data.text;
           } else {
-            throw new Error(data.error || "Unknown extraction error.");
+            // PDF document: try server extraction first, then fallback to in-browser parsing
+            try {
+              const formData = new FormData();
+              formData.append('file', file);
+              
+              const res = await fetch('/api/extract', {
+                method: 'POST',
+                body: formData
+              });
+              
+              if (res.ok) {
+                const data = await res.json();
+                if (data.status === 'success' && data.text) {
+                  finalExtractedText = data.text;
+                } else if (data.status === 'requires_ocr') {
+                  setStatus('ocr');
+                  finalExtractedText = await runClientOCR(file);
+                }
+              }
+            } catch (serverErr) {
+              console.warn("Server extraction unavailable, falling back to client-side extraction:", serverErr);
+            }
+
+            // In-browser PDF extraction fallback (ensures 100% reliability on Vercel/production)
+            if (!finalExtractedText || finalExtractedText.trim().length === 0) {
+              try {
+                const clientResult = await extractPdfTextClient(file);
+                if (clientResult.isScanned) {
+                  setStatus('ocr');
+                  finalExtractedText = await runClientOCR(file);
+                } else {
+                  finalExtractedText = clientResult.text;
+                }
+              } catch (clientErr) {
+                console.warn("Direct PDF parsing failed, attempting OCR fallback:", clientErr);
+                setStatus('ocr');
+                finalExtractedText = await runClientOCR(file);
+              }
+            }
           }
           
           if (!finalExtractedText || finalExtractedText.trim().length === 0) {

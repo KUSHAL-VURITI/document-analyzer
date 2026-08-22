@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
 
   } catch (error) {
-    console.error("Extraction error:", error);
-    return NextResponse.json({ error: "Failed to process document" }, { status: 500 });
+    console.error("Extraction server error (delegating to client OCR/parser):", error);
+    return NextResponse.json({ status: "requires_ocr" }, { status: 200 });
   }
 }
