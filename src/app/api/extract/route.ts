@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractText } from "unpdf";
 
+export const maxDuration = 30;
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();

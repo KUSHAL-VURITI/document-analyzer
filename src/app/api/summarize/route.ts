@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateDocumentSummary } from "@/lib/ai/provider";
 import { SYSTEM_PROMPTS } from "@/lib/ai/prompts";
 
+export const maxDuration = 30;
+
 export async function POST(req: NextRequest) {
   try {
     const { text, mode = "medium" } = await req.json();
