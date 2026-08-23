@@ -1,12 +1,23 @@
 # Document Intelligence Assistant
 
+> **Live Demo**: [https://document-analyzer-rouge.vercel.app/](https://document-analyzer-rouge.vercel.app/)
+
 A modern, full-stack Document Intelligence application built with Next.js (App Router), React 19, TypeScript, and the Vercel AI SDK. Designed for high readability, responsive performance, and grounded AI analysis across PDFs and images.
+
+---
+
+## 🚀 Live Deployment
+
+- **Production URL**: [https://document-analyzer-rouge.vercel.app/](https://document-analyzer-rouge.vercel.app/)
+- **Hosting Platform**: Vercel Serverless Platform
+- **AI Acceleration**: Groq LPU Inference Engine (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`)
 
 ---
 
 ## Key Features
 
 - **High-Fidelity PDF & Image Rendering**: Native multi-page PDF rendering via `pdfjs-dist` with hardware-accelerated canvas output and interactive text selection layers.
+- **Dynamic Fit-to-Width**: Responsive scaling that automatically fits both portrait and landscape documents edge-to-edge across various viewports.
 - **In-Document Search & Highlighting**: Fast in-document keyword search with real-time `<mark>` text-layer highlights, active vs. inactive match distinction, and next/previous keyboard navigation (<kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd>).
 - **Hybrid Extraction Pipeline**: Server-side parsing (`unpdf`/`pdf-parse`) for text PDFs with seamless client-side Web Worker OCR (`tesseract.js`) fallback for scanned documents and image files.
 - **Dynamic AI Summaries**: Adjustable summary lengths (**Short**, **Medium**, **Long**) with structured Key Takeaways and document classification.
@@ -48,11 +59,9 @@ npm install
 Create a `.env.local` file in the project root:
 
 ```env
-# Optional for live LLM summarization and chat (Groq / Gemini)
+# Groq API Key for live LLM summarization and chat
 GROQ_API_KEY=your_groq_api_key_here
 ```
-
-> **Note:** If no API key is provided, the application runs with mock streaming and built-in sample data for evaluation.
 
 ### 4. Run Development Server
 
