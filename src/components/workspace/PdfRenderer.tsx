@@ -258,15 +258,12 @@ export function PdfRenderer({
 
         textLayerDiv.appendChild(span);
 
-        // Apply scaleX transform to guarantee character-level bounding box match
+        // Apply exact horizontal scaling and italic slant without flipping Y axis
         if (targetWidth > 0 && span.offsetWidth > 0) {
           const scaleX = targetWidth / span.offsetWidth;
-          if (item.transform[1] !== 0 || item.transform[2] !== 0) {
-            const a = (tx[0] / fontHeight) * scaleX;
-            const b = tx[1] / fontHeight;
-            const c = tx[2] / fontHeight;
-            const d = tx[3] / fontHeight;
-            span.style.transform = `matrix(${a}, ${b}, ${c}, ${d}, 0, 0)`;
+          if (item.transform[2] !== 0) {
+            const skewRad = Math.atan2(-item.transform[2], Math.abs(item.transform[3] || 1));
+            span.style.transform = `skewX(${skewRad}rad) scaleX(${scaleX})`;
           } else {
             span.style.transform = `scaleX(${scaleX})`;
           }
