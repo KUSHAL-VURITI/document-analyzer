@@ -23,7 +23,7 @@ export function getAiModel(modelOverride?: string) {
 
   if (groqKey) {
     const groq = createGroq({ apiKey: groqKey });
-    return groq(modelOverride || "llama-3.1-8b-instant");
+    return groq(modelOverride || "openai/gpt-oss-120b");
   }
 
   if (geminiKey) {
@@ -55,7 +55,7 @@ export async function generateDocumentSummary(
     throw new Error("No AI API key found. Please configure GROQ_API_KEY in your hosting environment variables.");
   }
 
-  const truncated = text.slice(0, 12000);
+  const truncated = text.slice(0, 10000);
   const prompt = `${systemPrompt}
 
 Mode: ${mode}
@@ -67,7 +67,7 @@ Respond ONLY with valid JSON in this exact format, no other text:
 {"summary": "...", "keyPoints": ["point1", "point2", "point3"], "documentType": "..."}`;
 
   const candidateModels = groqKey
-    ? ["llama-3.1-8b-instant", "mixtral-8x7b-32768", "llama3-70b-8192", "gemma2-9b-it"]
+    ? ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b", "groq/compound-mini"]
     : ["gemini-1.5-flash"];
 
   let lastError: any = null;
