@@ -35,8 +35,10 @@ export function PdfRenderer({
   const textLayerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const pageTextContentRef = useRef<Map<number, any>>(new Map());
+  const renderTasksRef = useRef<Map<number, any>>(new Map());
+  const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Track container width via ResizeObserver to dynamically fill panel width
+  // Track container width via debounced ResizeObserver to prevent concurrent render thrashing
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -53,16 +55,32 @@ export function PdfRenderer({
     updateWidth();
 
     const resizeObserver = new ResizeObserver(() => {
-      updateWidth();
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
+      resizeTimeoutRef.current = setTimeout(() => {
+        updateWidth();
+      }, 100);
     });
 
     resizeObserver.observe(el);
-    return () => resizeObserver.disconnect();
+    return () => {
+      if (resizeTimeoutRef.current) clearTimeout(resizeTimeoutRef.current);
+      resizeObserver.disconnect();
+    };
   }, []);
 
   // Load PDF Document
   useEffect(() => {
     let isCancelled = false;
+
+    // Cancel all in-flight render tasks when file changes
+    renderTasksRef.current.forEach((task) => {
+      try {
+        task.cancel();
+      } catch (_) {}
+    });
+    renderTasksRef.current.clear();
 
     async function loadPdf() {
       if (!file) return;
@@ -108,10 +126,16 @@ export function PdfRenderer({
     loadPdf();
     return () => {
       isCancelled = true;
+      renderTasksRef.current.forEach((task) => {
+        try {
+          task.cancel();
+        } catch (_) {}
+      });
+      renderTasksRef.current.clear();
     };
   }, [file]);
 
-  // Render individual page canvas with page-specific fit-to-width calculation
+  // Render individual page canvas with cancellation management and exact aspect ratio fitting
   const renderPage = useCallback(async (pageNum: number) => {
     if (!pdfDoc || viewerWidth <= 0) return;
 
@@ -122,29 +146,40 @@ export function PdfRenderer({
 
       if (!canvas) return;
 
+      // 1. Cancel any active render task for this specific page
+      const existingTask = renderTasksRef.current.get(pageNum);
+      if (existingTask) {
+        try {
+          existingTask.cancel();
+        } catch (_) {}
+        renderTasksRef.current.delete(pageNum);
+      }
+
       const unscaledViewport = page.getViewport({ scale: 1.0 });
-      // Calculate fit-to-width scale specifically for this page's aspect ratio and dimensions
-      // Reserve 32px for side padding (16px on each side)
-      const targetWidth = Math.max(viewerWidth - 32, 280);
+      
+      // Calculate responsive width keeping accurate aspect ratio
+      const padding = viewerWidth < 640 ? 16 : 32;
+      const targetWidth = Math.max(Math.min(viewerWidth - padding, 960), 240);
       const pageScale = targetWidth / unscaledViewport.width;
 
-      const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+      const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
       
-      // High-DPI canvas rendering
-      const renderViewport = page.getViewport({ scale: pageScale * dpr });
-      // Exact CSS display viewport
+      // CSS display viewport
       const cssViewport = page.getViewport({ scale: pageScale });
+      // High-DPI canvas rendering viewport
+      const renderViewport = page.getViewport({ scale: pageScale * dpr });
 
       const cssWidth = Math.round(cssViewport.width);
       const cssHeight = Math.round(cssViewport.height);
 
-      // Set container dimensions
+      // Set container dimensions matching exact page aspect ratio
       if (pageContainer) {
         pageContainer.style.width = `${cssWidth}px`;
         pageContainer.style.height = `${cssHeight}px`;
+        pageContainer.style.aspectRatio = `${unscaledViewport.width} / ${unscaledViewport.height}`;
       }
 
-      // Set canvas display and pixel density dimensions
+      // Configure high-DPI canvas buffer
       canvas.width = Math.round(renderViewport.width);
       canvas.height = Math.round(renderViewport.height);
       canvas.style.width = `${cssWidth}px`;
@@ -154,24 +189,41 @@ export function PdfRenderer({
 
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Enforce solid white background on canvas to guarantee proper contrast for transparent PDFs
+        // Reset coordinate transform matrix to avoid inversion accumulation
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
 
-        await page.render({
+        const renderTask = page.render({
           canvasContext: ctx,
           viewport: renderViewport,
           background: 'rgb(255, 255, 255)',
-        }).promise;
+        });
+
+        renderTasksRef.current.set(pageNum, renderTask);
+
+        try {
+          await renderTask.promise;
+        } catch (renderErr: any) {
+          if (renderErr?.name === 'RenderingCancelledException') {
+            // Cancelled as expected due to resize or new render, safe to ignore
+            return;
+          }
+          console.error(`Page ${pageNum} render error:`, renderErr);
+        } finally {
+          renderTasksRef.current.delete(pageNum);
+        }
       }
 
       // Fetch and cache text content with the page's exact CSS viewport
       const textContent = await page.getTextContent();
       pageTextContentRef.current.set(pageNum, { textContent, viewport: cssViewport });
-    } catch (err) {
-      console.error(`Error rendering page ${pageNum}:`, err);
+    } catch (err: any) {
+      if (err?.name !== 'RenderingCancelledException') {
+        console.error(`Error loading page ${pageNum}:`, err);
+      }
     }
   }, [pdfDoc, viewerWidth]);
 
@@ -268,7 +320,7 @@ export function PdfRenderer({
 
         textLayerDiv.appendChild(span);
 
-        // Apply exact horizontal scaling and italic slant without flipping Y axis
+        // Apply exact horizontal scaling and italic slant
         if (targetWidth > 0 && span.offsetWidth > 0) {
           const scaleX = targetWidth / span.offsetWidth;
           if (item.transform[2] !== 0) {
