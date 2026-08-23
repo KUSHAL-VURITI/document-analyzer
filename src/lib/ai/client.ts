@@ -1,10 +1,6 @@
-import { useDocumentStore } from '@/lib/store';
+import { useDocumentStore, SummaryData } from '@/lib/store';
 
-export interface SummaryResponse {
-  summary: string;
-  keyPoints: string[];
-  documentType: string;
-}
+export type SummaryResponse = SummaryData;
 
 export async function fetchDocumentSummary(
   text: string, 
@@ -12,6 +8,16 @@ export async function fetchDocumentSummary(
 ): Promise<SummaryResponse> {
   if (!text || text.trim().length === 0) {
     throw new Error("No readable text provided for summarization.");
+  }
+
+  const store = useDocumentStore.getState();
+
+  // Instant response if already in client cache
+  if (store.summaryCache[mode]) {
+    const cachedData = store.summaryCache[mode]!;
+    store.setSummaryMode(mode);
+    store.setSummaryData(cachedData);
+    return cachedData;
   }
 
   const res = await fetch('/api/summarize', {
@@ -39,8 +45,8 @@ export async function fetchDocumentSummary(
     throw new Error("Invalid response format received from summarization service.");
   }
 
-  // Update store state with selected mode and received summary
-  const store = useDocumentStore.getState();
+  // Cache and update store state
+  store.setCachedSummary(mode, data);
   store.setSummaryMode(mode);
   store.setSummaryData(data);
 

@@ -23,12 +23,12 @@ export function getAiModel(modelOverride?: string) {
 
   if (groqKey) {
     const groq = createGroq({ apiKey: groqKey });
-    return groq(modelOverride || "openai/gpt-oss-120b");
+    return groq(modelOverride || "llama-3.3-70b-versatile");
   }
 
   if (geminiKey) {
     const google = createGoogleGenerativeAI({ apiKey: geminiKey });
-    return google("gemini-1.5-flash");
+    return google(modelOverride || "gemini-1.5-flash");
   }
 
   return null;
@@ -84,7 +84,7 @@ Respond ONLY with valid JSON in this exact structure, with no markdown code bloc
 }`;
 
   const candidateModels = groqKey
-    ? ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b", "groq/compound-mini"]
+    ? ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
     : ["gemini-1.5-flash"];
 
   let lastError: any = null;

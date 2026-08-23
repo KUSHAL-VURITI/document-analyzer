@@ -167,17 +167,24 @@ export function AiPanel() {
             <div className="flex items-center justify-between pt-1">
               <span className="text-xs font-medium text-muted-foreground">Summary Length</span>
               <div className="flex items-center gap-1 p-1 bg-[var(--muted)] rounded-lg">
-                {['short', 'medium', 'long'].map((mode) => (
-                  <button 
-                    key={mode}
-                    onClick={async () => {
-                      if (isRegenerating || mode === summaryMode) return;
-                      
-                      setIsRegenerating(true);
-                      try {
+                {['short', 'medium', 'long'].map((mode) => {
+                  const targetMode = mode as 'short' | 'medium' | 'long';
+                  return (
+                    <button 
+                      key={mode}
+                      onClick={async () => {
+                        if (isRegenerating || mode === summaryMode) return;
+                        
+                        const store = useDocumentStore.getState();
+                        
+                        // Instant 0ms switch if already in client cache
+                        if (store.summaryCache[targetMode]) {
+                          store.setSummaryMode(targetMode);
+                          store.setSummaryData(store.summaryCache[targetMode]!);
+                          return;
+                        }
+
                         if (isDemo) {
-                          // Instant precomputed summaries for demo mode
-                          await new Promise(r => setTimeout(r, 250));
                           const demoSummaries = {
                             short: {
                               summary: "The Q4 Financial Report highlights strong performance led by a 15% revenue expansion in the enterprise segment. Operating expenses were reduced by 2%, contributing to increased profitability.",
@@ -207,30 +214,36 @@ export function AiPanel() {
                               documentType: "Financial Report"
                             }
                           };
-                          useDocumentStore.getState().setSummaryMode(mode as 'short' | 'medium' | 'long');
-                          useDocumentStore.getState().setSummaryData(demoSummaries[mode as keyof typeof demoSummaries]);
-                        } else {
-                          const text = useDocumentStore.getState().extractedText;
-                          if (!text) return;
-                          await fetchDocumentSummary(text, mode as 'short' | 'medium' | 'long');
+                          const selected = demoSummaries[targetMode];
+                          store.setCachedSummary(targetMode, selected);
+                          store.setSummaryMode(targetMode);
+                          store.setSummaryData(selected);
+                          return;
                         }
-                      } catch (e: any) {
-                        console.error("Failed to regenerate summary:", e);
-                        alert(e.message || "Failed to regenerate summary. Please check your API key or network connection.");
-                      } finally {
-                        setIsRegenerating(false);
-                      }
-                    }}
-                    disabled={isRegenerating}
-                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 cursor-pointer ${
-                      summaryMode === mode 
-                        ? 'bg-card text-foreground shadow-sm' 
-                        : 'text-muted-foreground hover:text-foreground active:scale-95'
-                    } ${isRegenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    {isRegenerating && summaryMode === mode ? '...' : mode.charAt(0).toUpperCase() + mode.slice(1)}
-                  </button>
-                ))}
+
+                        setIsRegenerating(true);
+                        try {
+                          const text = store.extractedText;
+                          if (!text) return;
+                          await fetchDocumentSummary(text, targetMode);
+                        } catch (e: any) {
+                          console.error("Failed to regenerate summary:", e);
+                          alert(e.message || "Failed to regenerate summary. Please check your network connection.");
+                        } finally {
+                          setIsRegenerating(false);
+                        }
+                      }}
+                      disabled={isRegenerating}
+                      className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-150 cursor-pointer ${
+                        summaryMode === mode 
+                          ? 'bg-card text-foreground shadow-sm font-semibold' 
+                          : 'text-muted-foreground hover:text-foreground active:scale-95'
+                      } ${isRegenerating && summaryMode === mode ? 'opacity-70' : ''}`}
+                    >
+                      {isRegenerating && summaryMode === mode ? '...' : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

@@ -10,7 +10,7 @@ export async function POST(req: Request) {
     return new Response('Missing document text', { status: 400 });
   }
 
-  const model = getAiModel('openai/gpt-oss-120b');
+  const model = getAiModel();
   if (!model) {
     return new Response(
       "AI service is currently unavailable. Please configure GROQ_API_KEY in your hosting environment variables.",
