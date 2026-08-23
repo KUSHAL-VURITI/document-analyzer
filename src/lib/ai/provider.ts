@@ -84,7 +84,7 @@ Respond ONLY with valid JSON in this exact structure, with no markdown code bloc
 }`;
 
   const candidateModels = groqKey
-    ? ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemma2-9b-it"]
+    ? ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192", "llama3-8b-8192"]
     : ["gemini-1.5-flash", "gemini-2.0-flash"];
 
   let lastError: any = null;
