@@ -28,7 +28,7 @@ export function PdfRenderer({
   const [error, setError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
-  const [pageScale, setPageScale] = useState<number>(1.0);
+  const [viewerWidth, setViewerWidth] = useState<number>(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const pageContainerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -36,43 +36,29 @@ export function PdfRenderer({
   const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const pageTextContentRef = useRef<Map<number, any>>(new Map());
 
-  // Compute precise fit-to-width scale matching the viewer panel
-  const computeFitScale = useCallback(async (doc: any) => {
-    if (!containerRef.current || !doc) return;
-    try {
-      const firstPage = await doc.getPage(1);
-      const unscaledViewport = firstPage.getViewport({ scale: 1.0 });
-      const clientWidth = containerRef.current.clientWidth;
-      
-      // Reserve 40px for padding and scrollbar clearance
-      const availableWidth = Math.max(clientWidth - 40, 260);
-      const fitScale = availableWidth / unscaledViewport.width;
-      
-      setPageScale(fitScale);
-    } catch (e) {
-      console.warn("Could not calculate fit scale:", e);
-    }
-  }, []);
-
-  // ResizeObserver on the viewer container for dynamic window/panel resizing
+  // Track container width via ResizeObserver to dynamically fill panel width
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || !pdfDoc) return;
+    if (!el) return;
 
-    let timeoutId: any = null;
+    const updateWidth = () => {
+      if (containerRef.current) {
+        const clientW = containerRef.current.clientWidth;
+        if (clientW > 0) {
+          setViewerWidth(clientW);
+        }
+      }
+    };
+
+    updateWidth();
+
     const resizeObserver = new ResizeObserver(() => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        computeFitScale(pdfDoc);
-      }, 100);
+      updateWidth();
     });
 
     resizeObserver.observe(el);
-    return () => {
-      clearTimeout(timeoutId);
-      resizeObserver.disconnect();
-    };
-  }, [pdfDoc, computeFitScale]);
+    return () => resizeObserver.disconnect();
+  }, []);
 
   // Load PDF Document
   useEffect(() => {
@@ -107,7 +93,6 @@ export function PdfRenderer({
 
         setPdfDoc(doc);
         setNumPages(doc.numPages);
-        await computeFitScale(doc);
       } catch (err: any) {
         console.error("Error loading PDF:", err);
         if (!isCancelled) {
@@ -124,11 +109,11 @@ export function PdfRenderer({
     return () => {
       isCancelled = true;
     };
-  }, [file, computeFitScale]);
+  }, [file]);
 
-  // Render individual page canvas and store text content
+  // Render individual page canvas with page-specific fit-to-width calculation
   const renderPage = useCallback(async (pageNum: number) => {
-    if (!pdfDoc) return;
+    if (!pdfDoc || viewerWidth <= 0) return;
 
     try {
       const page = await pdfDoc.getPage(pageNum);
@@ -137,24 +122,29 @@ export function PdfRenderer({
 
       if (!canvas) return;
 
-      const baseScale = pageScale;
+      const unscaledViewport = page.getViewport({ scale: 1.0 });
+      // Calculate fit-to-width scale specifically for this page's aspect ratio and dimensions
+      // Reserve 32px for side padding (16px on each side)
+      const targetWidth = Math.max(viewerWidth - 32, 280);
+      const pageScale = targetWidth / unscaledViewport.width;
+
       const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
       
-      // High-DPI render viewport for crisp text
-      const renderViewport = page.getViewport({ scale: baseScale * dpr });
+      // High-DPI canvas rendering
+      const renderViewport = page.getViewport({ scale: pageScale * dpr });
       // Exact CSS display viewport
-      const cssViewport = page.getViewport({ scale: baseScale });
+      const cssViewport = page.getViewport({ scale: pageScale });
 
       const cssWidth = Math.round(cssViewport.width);
       const cssHeight = Math.round(cssViewport.height);
 
-      // Lock container dimensions
+      // Set container dimensions
       if (pageContainer) {
         pageContainer.style.width = `${cssWidth}px`;
         pageContainer.style.height = `${cssHeight}px`;
       }
 
-      // Lock canvas dimensions
+      // Set canvas display and pixel density dimensions
       canvas.width = Math.round(renderViewport.width);
       canvas.height = Math.round(renderViewport.height);
       canvas.style.width = `${cssWidth}px`;
@@ -172,25 +162,25 @@ export function PdfRenderer({
         }).promise;
       }
 
-      // Fetch and cache text content
+      // Fetch and cache text content with the page's exact CSS viewport
       const textContent = await page.getTextContent();
       pageTextContentRef.current.set(pageNum, { textContent, viewport: cssViewport });
     } catch (err) {
       console.error(`Error rendering page ${pageNum}:`, err);
     }
-  }, [pdfDoc, pageScale]);
+  }, [pdfDoc, viewerWidth]);
 
-  // Trigger rendering when PDF document or page scale changes
+  // Trigger rendering when document or viewer panel width changes
   useEffect(() => {
-    if (!pdfDoc || numPages === 0) return;
+    if (!pdfDoc || numPages === 0 || viewerWidth <= 0) return;
     for (let p = 1; p <= numPages; p++) {
       renderPage(p);
     }
-  }, [pdfDoc, numPages, pageScale, renderPage]);
+  }, [pdfDoc, numPages, viewerWidth, renderPage]);
 
-  // Render textLayer and search highlights directly with exact affine matrix transforms
+  // Render textLayer and search highlights with character-level precision and scaleX matching
   useEffect(() => {
-    if (loading || numPages === 0) return;
+    if (loading || numPages === 0 || viewerWidth <= 0) return;
 
     const query = searchQuery.trim().toLowerCase();
     let totalMatches = 0;
@@ -218,11 +208,12 @@ export function PdfRenderer({
       textContent.items.forEach((item: any) => {
         if (!item.str && item.str !== ' ') return;
 
-        // Exact affine coordinate transformation from PDF space to viewport pixel space
+        // Exact affine coordinate transformation
         const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
         const fontHeight = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
         const left = tx[4];
         const top = tx[5] - fontHeight;
+        const targetWidth = item.width * viewport.scale;
 
         const span = document.createElement('span');
         span.style.position = 'absolute';
@@ -235,15 +226,6 @@ export function PdfRenderer({
         span.style.color = 'transparent';
         span.style.lineHeight = '1';
         span.style.cursor = 'text';
-
-        // Apply any rotation/skew if present
-        if (item.transform[1] !== 0 || item.transform[2] !== 0) {
-          const a = tx[0] / fontHeight;
-          const b = tx[1] / fontHeight;
-          const c = tx[2] / fontHeight;
-          const d = tx[3] / fontHeight;
-          span.style.transform = `matrix(${a}, ${b}, ${c}, ${d}, 0, 0)`;
-        }
 
         const rawText = item.str;
 
@@ -275,13 +257,27 @@ export function PdfRenderer({
         }
 
         textLayerDiv.appendChild(span);
+
+        // Apply scaleX transform to guarantee character-level bounding box match
+        if (targetWidth > 0 && span.offsetWidth > 0) {
+          const scaleX = targetWidth / span.offsetWidth;
+          if (item.transform[1] !== 0 || item.transform[2] !== 0) {
+            const a = (tx[0] / fontHeight) * scaleX;
+            const b = tx[1] / fontHeight;
+            const c = tx[2] / fontHeight;
+            const d = tx[3] / fontHeight;
+            span.style.transform = `matrix(${a}, ${b}, ${c}, ${d}, 0, 0)`;
+          } else {
+            span.style.transform = `scaleX(${scaleX})`;
+          }
+        }
       });
     }
 
     if (onMatchesFound) {
       onMatchesFound(totalMatches);
     }
-  }, [searchQuery, loading, numPages, pageScale, onMatchesFound]);
+  }, [searchQuery, loading, numPages, viewerWidth, onMatchesFound]);
 
   // Update active match styling and scroll target into view
   useEffect(() => {
@@ -330,7 +326,7 @@ export function PdfRenderer({
   return (
     <div 
       ref={containerRef}
-      className="flex-1 w-full h-full overflow-y-auto overflow-x-hidden p-3 sm:p-5 scroll-smooth custom-scrollbar bg-[var(--surface)] flex flex-col items-center"
+      className="flex-1 w-full h-full overflow-y-auto overflow-x-hidden p-2 sm:p-4 scroll-smooth custom-scrollbar bg-[var(--surface)] flex flex-col items-center"
     >
       {loading && (
         <div className="flex flex-col items-center justify-center my-auto py-12 gap-3 text-muted-foreground">
