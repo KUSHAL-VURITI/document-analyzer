@@ -18,7 +18,6 @@ export function InsightsTab() {
   const ocrUsed = status === 'ocr';
 
   const metrics = [
-    { icon: Hash, label: "Words", value: wordCount.toLocaleString() },
     { icon: FileText, label: "Pages", value: pages.toString() },
   ];
 

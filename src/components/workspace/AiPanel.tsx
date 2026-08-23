@@ -30,10 +30,8 @@ export function AiPanel() {
 
   if (!summaryData) return null;
 
-  const docWordCount = extractedText ? extractedText.split(/\s+/).filter(Boolean).length : 0;
   const summaryWordCount = summaryData?.summary ? summaryData.summary.split(/\s+/).filter(Boolean).length : 0;
   const pages = extractedText ? extractedText.split('---PAGE_BREAK---').map(p => p.trim()).filter(Boolean).length : 0;
-  const compressionPct = docWordCount > 0 ? Math.max(0, Math.round((1 - summaryWordCount / docWordCount) * 100)) : 0;
   const readingTimeMin = Math.max(1, Math.ceil(summaryWordCount / 200));
 
   const dateRegex = /\b(19|20)\d{2}\b/g;
@@ -66,7 +64,7 @@ export function AiPanel() {
       />
 
       {/* Document metadata header */}
-      <div className="px-5 pt-5 pb-4 border-b border-[var(--border)] shrink-0 flex justify-between items-start gap-4">
+      <div className="px-4 sm:px-5 pt-5 pb-4 border-b border-[var(--border)] shrink-0 flex justify-between items-start gap-4">
         <div className="flex items-center gap-3 w-full min-w-0">
           <div className="w-8 h-8 rounded-lg bg-[var(--annotation-soft)] flex items-center justify-center shrink-0">
             <FileText className="w-4 h-4 text-[var(--annotation)]" />
@@ -80,11 +78,8 @@ export function AiPanel() {
                 {summaryData.documentType}
               </span>
             </div>
-            <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
-              <span className="flex items-center gap-1.5">
-                <Hash className="w-3 h-3" />
-                {docWordCount.toLocaleString()} doc words
-              </span>
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+              <span>{pages} {pages === 1 ? 'page' : 'pages'}</span>
             </div>
           </div>
         </div>
@@ -129,7 +124,7 @@ export function AiPanel() {
           {/* Merged Summary Tab with Integrated Insights */}
           <TabsContent value="summary" className="m-0 p-4 sm:p-5 space-y-4 h-full focus-visible:outline-none focus-visible:ring-0 animate-in fade-in slide-in-from-right-3 duration-300">
             {/* Integrated Insights: Metric Cards */}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <div className="flex flex-col p-2.5 bg-card border border-[var(--border)] rounded-lg shadow-sm hover-lift transition-smooth">
                 <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                   <Sparkles className="w-3 h-3 text-[var(--annotation)]" />
@@ -137,16 +132,6 @@ export function AiPanel() {
                 </div>
                 <span className="text-sm font-semibold font-mono text-foreground mt-0.5">
                   {summaryWordCount.toLocaleString()} <span className="text-[10px] font-normal text-muted-foreground font-sans">words</span>
-                </span>
-              </div>
-
-              <div className="flex flex-col p-2.5 bg-card border border-[var(--border)] rounded-lg shadow-sm hover-lift transition-smooth">
-                <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <Hash className="w-3 h-3" />
-                  <span>Doc Words</span>
-                </div>
-                <span className="text-sm font-semibold font-mono text-foreground mt-0.5">
-                  {docWordCount.toLocaleString()}
                 </span>
               </div>
 
@@ -254,7 +239,7 @@ export function AiPanel() {
               <ReactMarkdown>{summaryData.summary}</ReactMarkdown>
               <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-3 mt-3 border-t border-[var(--border)]">
                 <span>{summaryWordCount} words</span>
-                <span>~{readingTimeMin} min read ({compressionPct}% condensed)</span>
+                <span>~{readingTimeMin} min read</span>
               </div>
             </div>
 
