@@ -29,7 +29,6 @@ export function PdfRenderer({
   const [numPages, setNumPages] = useState<number>(0);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [pageScale, setPageScale] = useState<number>(1.0);
-  const [pageDimensions, setPageDimensions] = useState<Map<number, { width: number; height: number }>>(new Map());
 
   const containerRef = useRef<HTMLDivElement>(null);
   const pageContainerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -189,7 +188,6 @@ export function PdfRenderer({
         textDivs: [],
       }).promise;
 
-      setPageDimensions(prev => new Map(prev).set(pageNum, { width: cssWidth, height: cssHeight }));
       renderedPagesRef.current.add(pageNum);
     } catch (err) {
       console.error(`Error rendering page ${pageNum}:`, err);
@@ -206,6 +204,7 @@ export function PdfRenderer({
   }, [pdfDoc, numPages, pageScale, renderPage]);
 
   // Apply search match highlighting across all rendered text layers
+  // Deduplicates matches by processing only top-level direct child text elements
   useEffect(() => {
     if (loading || numPages === 0) return;
 
@@ -216,23 +215,21 @@ export function PdfRenderer({
       const textLayerDiv = textLayerRefs.current.get(pageNum);
       if (!textLayerDiv) continue;
 
-      const spans = textLayerDiv.querySelectorAll('span');
+      // Select ONLY direct child SPAN elements to prevent double counting parent + child
+      const directSpans = Array.from(textLayerDiv.children).filter(
+        (el) => el.tagName === 'SPAN' && !el.classList.contains('markedContent')
+      ) as HTMLElement[];
 
-      spans.forEach((span) => {
-        if (!query) {
-          if (span.querySelector('mark')) {
-            span.textContent = span.textContent;
-          }
-          return;
+      directSpans.forEach((span) => {
+        // Clean any existing marks first to read clean original text
+        if (span.querySelector('mark')) {
+          span.textContent = span.textContent;
         }
+
+        if (!query) return;
 
         const text = span.textContent || '';
-        if (!text.toLowerCase().includes(query)) {
-          if (span.querySelector('mark')) {
-            span.textContent = text;
-          }
-          return;
-        }
+        if (!text.toLowerCase().includes(query)) return;
 
         const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(`(${escaped})`, 'gi');
@@ -243,11 +240,10 @@ export function PdfRenderer({
           if (part.toLowerCase() === query) {
             const matchIdx = totalMatches;
             totalMatches++;
-            const isActive = matchIdx === currentMatchIndex;
 
             const mark = document.createElement('mark');
             mark.id = `pdf-match-${matchIdx}`;
-            mark.className = `search-match ${isActive ? 'search-match-active' : ''}`;
+            mark.className = 'search-match';
             mark.textContent = part;
             span.appendChild(mark);
           } else if (part) {
@@ -260,14 +256,20 @@ export function PdfRenderer({
     if (onMatchesFound) {
       onMatchesFound(totalMatches);
     }
-  }, [searchQuery, currentMatchIndex, loading, numPages, pageScale, onMatchesFound]);
+  }, [searchQuery, loading, numPages, pageScale, onMatchesFound]);
 
-  // Scroll to active match when currentMatchIndex changes
+  // Update active match class and scroll to active match
   useEffect(() => {
     if (!searchQuery || searchQuery.trim().length === 0) return;
 
+    // Remove active class from all marks
+    const allMarks = document.querySelectorAll('.textLayer mark.search-match-active');
+    allMarks.forEach((m) => m.classList.remove('search-match-active'));
+
+    // Highlight target mark
     const targetMatch = document.getElementById(`pdf-match-${currentMatchIndex}`);
     if (targetMatch) {
+      targetMatch.classList.add('search-match-active');
       targetMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [currentMatchIndex, searchQuery]);
