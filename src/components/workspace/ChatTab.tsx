@@ -133,12 +133,13 @@ export function ChatTab() {
   );
 
   return (
-    <div className="flex flex-col h-full relative">
-      <div className="flex-1 overflow-auto custom-scrollbar pr-1 pb-20">
+    <div className="flex flex-col h-full min-h-0 w-full">
+      {/* Scrollable chat messages / suggested prompts area */}
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1 pb-2">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4 space-y-6">
-            <div className="space-y-3">
-              <div className="w-11 h-11 rounded-xl bg-[var(--annotation-soft)] text-[var(--annotation)] flex items-center justify-center mx-auto">
+          <div className="flex flex-col items-center justify-center min-h-full text-center px-2 py-4 space-y-4">
+            <div className="space-y-2">
+              <div className="w-10 h-10 rounded-xl bg-[var(--annotation-soft)] text-[var(--annotation)] flex items-center justify-center mx-auto">
                 <MessageCircle className="w-5 h-5" />
               </div>
               <div>
@@ -150,13 +151,13 @@ export function ChatTab() {
             </div>
             
             {/* Suggested questions */}
-            <div className="w-full space-y-2">
+            <div className="w-full space-y-2 max-w-sm">
               {suggestedQuestions.map((q, i) => (
                 <button
                   key={q}
                   onClick={() => sendQuestion(q)}
                   style={{ animationDelay: `${i * 80}ms` }}
-                  className="w-full text-left px-4 py-3 text-sm bg-card border border-[var(--border)] rounded-xl hover:border-[var(--annotation)]/30 hover:bg-[var(--annotation-soft)]/20 transition-smooth hover-lift text-foreground cascade-item"
+                  className="w-full text-left px-3.5 py-2.5 text-xs sm:text-sm bg-card border border-[var(--border)] rounded-xl hover:border-[var(--annotation)]/30 hover:bg-[var(--annotation-soft)]/20 transition-smooth hover-lift text-foreground cascade-item cursor-pointer"
                 >
                   {q}
                 </button>
@@ -164,8 +165,8 @@ export function ChatTab() {
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            {messages.map((m, index) => (
+          <div className="space-y-3.5 pt-1">
+            {messages.map((m) => (
               <div 
                 key={m.id} 
                 className={`flex gap-2.5 text-sm animate-in fade-in slide-in-from-bottom-2 duration-300 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -177,10 +178,10 @@ export function ChatTab() {
                 )}
                 
                 <div 
-                  className={`max-w-[85%] rounded-xl px-4 py-2.5 leading-relaxed shadow-sm transition-all duration-300 ${
+                  className={`max-w-[85%] rounded-xl px-3.5 py-2.5 leading-relaxed shadow-xs transition-all duration-300 ${
                     m.role === 'user' 
-                      ? 'bg-[var(--annotation)] text-[var(--accent-foreground)] rounded-br-sm' 
-                      : 'bg-card border border-[var(--border)] text-foreground rounded-bl-sm hover:border-[var(--annotation)]/20'
+                      ? 'bg-[var(--annotation)] text-[var(--accent-foreground)] rounded-br-xs' 
+                      : 'bg-card border border-[var(--border)] text-foreground rounded-bl-xs hover:border-[var(--annotation)]/20'
                   }`}
                 >
                   {renderMessageContent(m.content)}
@@ -193,7 +194,7 @@ export function ChatTab() {
                 <div className="w-7 h-7 rounded-lg bg-[var(--annotation-soft)] text-[var(--annotation)] flex items-center justify-center shrink-0">
                   <Bot className="w-3.5 h-3.5" />
                 </div>
-                <div className="bg-card border border-[var(--border)] rounded-xl rounded-bl-sm px-4 py-3 flex gap-1.5 items-center">
+                <div className="bg-card border border-[var(--border)] rounded-xl rounded-bl-xs px-3.5 py-2.5 flex gap-1.5 items-center">
                   <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                   <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                   <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
@@ -202,7 +203,7 @@ export function ChatTab() {
             )}
             
             {error && (
-              <div className="flex gap-2 items-center p-3 text-sm bg-[var(--caution-soft)] text-[var(--caution)] rounded-xl border border-[var(--caution)]/20">
+              <div className="flex gap-2 items-center p-3 text-xs sm:text-sm bg-[var(--caution-soft)] text-[var(--caution)] rounded-xl border border-[var(--caution)]/20">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <p>Couldn't get a response. Please try again.</p>
               </div>
@@ -213,22 +214,22 @@ export function ChatTab() {
         )}
       </div>
 
-      {/* Input */}
-      <div className="absolute bottom-0 left-0 right-0 pt-4 bg-gradient-to-t from-background via-background to-transparent">
+      {/* Pinned Input Form at Bottom */}
+      <div className="shrink-0 pt-2 pb-1 bg-background border-t border-[var(--border)]/50">
         <form 
           onSubmit={handleSubmit}
-          className="relative flex items-center bg-card border border-[var(--border)] rounded-xl overflow-hidden focus-within:border-[var(--annotation)] transition-colors"
+          className="relative flex items-center bg-card border border-[var(--border)] rounded-xl overflow-hidden focus-within:border-[var(--annotation)] transition-colors shadow-xs"
         >
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question about this document..."
-            className="flex-1 bg-transparent px-4 py-3 text-sm focus:outline-none placeholder:text-muted-foreground"
+            className="flex-1 bg-transparent px-3.5 py-2.5 sm:py-3 text-xs sm:text-sm focus:outline-none placeholder:text-muted-foreground"
           />
           <button 
             type="submit" 
             disabled={isLoading || !input.trim()}
-            className="m-1.5 w-8 h-8 flex items-center justify-center bg-[var(--annotation)] text-[var(--accent-foreground)] rounded-lg disabled:opacity-40 hover:bg-[var(--annotation)]/90 active:scale-95 transition-all focus:outline-none"
+            className="m-1 w-8 h-8 flex items-center justify-center bg-[var(--annotation)] text-[var(--accent-foreground)] rounded-lg disabled:opacity-40 hover:bg-[var(--annotation)]/90 active:scale-95 transition-all focus:outline-none cursor-pointer shrink-0"
           >
             <Send className="w-3.5 h-3.5" />
           </button>

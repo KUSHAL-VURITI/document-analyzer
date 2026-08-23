@@ -135,7 +135,7 @@ export function Workspace() {
   const fileName = isDemo ? "Q4_Financial_Report.pdf" : file?.name || "Document";
 
   return (
-    <main className="flex flex-col md:flex-row h-screen w-full overflow-hidden bg-background animate-in fade-in duration-500">
+    <main className="flex flex-col md:flex-row h-[100dvh] w-full overflow-hidden bg-background animate-in fade-in duration-500">
       {/* Mobile Top View Switcher (Visible only on mobile screens < md) */}
       <div className="md:hidden flex items-center justify-between px-3.5 py-2.5 bg-card border-b border-[var(--border)] shrink-0 z-30 shadow-xs">
         <div className="flex items-center gap-2 min-w-0 max-w-[50%]">
@@ -192,9 +192,9 @@ export function Workspace() {
         <AiPanel />
       </section>
 
-      {/* Floating Action Switcher on Mobile */}
-      <div className="md:hidden fixed bottom-4 right-4 z-50">
-        {mobileTab === 'viewer' ? (
+      {/* Floating Quick Switcher on Document Viewer (Mobile only) */}
+      {mobileTab === 'viewer' && (
+        <div className="md:hidden fixed bottom-4 right-4 z-50">
           <button
             onClick={() => setMobileTab('ai')}
             className="flex items-center gap-2 px-4 py-2.5 bg-[var(--annotation)] text-[var(--accent-foreground)] rounded-full shadow-lg font-medium text-xs hover:scale-105 active:scale-95 transition-all cursor-pointer"
@@ -202,16 +202,8 @@ export function Workspace() {
             <Sparkles className="w-3.5 h-3.5" />
             <span>Open AI Panel</span>
           </button>
-        ) : (
-          <button
-            onClick={() => setMobileTab('viewer')}
-            className="flex items-center gap-2 px-4 py-2.5 bg-card border border-[var(--border)] text-foreground rounded-full shadow-lg font-medium text-xs hover:scale-105 active:scale-95 transition-all cursor-pointer"
-          >
-            <Eye className="w-3.5 h-3.5" />
-            <span>View Document</span>
-          </button>
-        )}
-      </div>
+        </div>
+      )}
     </main>
   );
 }
