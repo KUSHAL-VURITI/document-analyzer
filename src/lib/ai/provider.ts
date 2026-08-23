@@ -23,7 +23,7 @@ export function getAiModel(modelOverride?: string) {
 
   if (groqKey) {
     const groq = createGroq({ apiKey: groqKey });
-    return groq(modelOverride || "openai/gpt-oss-120b");
+    return groq(modelOverride || "openai/gpt-oss-20b");
   }
 
   if (geminiKey) {
@@ -61,7 +61,7 @@ export async function generateDocumentSummary(
     throw new Error("No AI API key found. Please configure GROQ_API_KEY in your hosting environment variables.");
   }
 
-  const truncated = text.slice(0, 15000);
+  const truncated = text.slice(0, 12000);
   const lengthInstruction = LENGTH_INSTRUCTIONS[mode] || LENGTH_INSTRUCTIONS.medium;
 
   const prompt = `${systemPrompt}
@@ -72,7 +72,7 @@ Document Text:
 ${truncated}
 
 Output Format:
-Respond ONLY with valid JSON in this exact structure, with no markdown code blocks or additional text:
+Respond ONLY with valid JSON in this exact structure:
 {
   "summary": "...",
   "keyPoints": [
@@ -80,11 +80,12 @@ Respond ONLY with valid JSON in this exact structure, with no markdown code bloc
     "Critical key point 2",
     "Critical key point 3"
   ],
-  "documentType": "Document Classification (e.g. Technical Lecture Notes, Research Paper, Resume, Invoice, Legal Contract, Financial Report)"
+  "documentType": "Document Classification"
 }`;
 
+  // Prioritize fast 20b model for instant turnaround, fall back to 120b/qwen
   const candidateModels = groqKey
-    ? ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"]
+    ? ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.6-27b"]
     : ["gemini-1.5-flash", "gemini-2.0-flash"];
 
   let lastError: any = null;

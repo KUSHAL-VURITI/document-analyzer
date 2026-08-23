@@ -133,9 +133,9 @@ export function ChatTab() {
   );
 
   return (
-    <div className="flex flex-col h-full min-h-0 w-full">
-      {/* Scrollable chat messages / suggested prompts area */}
-      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1 pb-2">
+    <div className="flex flex-col h-full min-h-0 w-full overflow-hidden">
+      {/* Scrollable messages / suggested prompts */}
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar px-1 py-2 touch-pan-y">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center min-h-full text-center px-2 py-4 space-y-4">
             <div className="space-y-2">
@@ -214,8 +214,8 @@ export function ChatTab() {
         )}
       </div>
 
-      {/* Pinned Input Form at Bottom */}
-      <div className="shrink-0 pt-2 pb-1 bg-background border-t border-[var(--border)]/50">
+      {/* Pinned Input Form at Bottom with Safe Area */}
+      <div className="shrink-0 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-background border-t border-[var(--border)]/50">
         <form 
           onSubmit={handleSubmit}
           className="relative flex items-center bg-card border border-[var(--border)] rounded-xl overflow-hidden focus-within:border-[var(--annotation)] transition-colors shadow-xs"
@@ -224,7 +224,7 @@ export function ChatTab() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question about this document..."
-            className="flex-1 bg-transparent px-3.5 py-2.5 sm:py-3 text-xs sm:text-sm focus:outline-none placeholder:text-muted-foreground"
+            className="flex-1 bg-transparent px-3.5 py-2.5 sm:py-3 text-base sm:text-sm focus:outline-none placeholder:text-muted-foreground"
           />
           <button 
             type="submit" 
