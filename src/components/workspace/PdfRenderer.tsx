@@ -17,12 +17,6 @@ interface PdfRendererProps {
   highlightedPage: number | null;
 }
 
-interface PageData {
-  pageNum: number;
-  viewport: any;
-  textContent: any;
-}
-
 export function PdfRenderer({
   file,
   searchQuery,
@@ -34,11 +28,42 @@ export function PdfRenderer({
   const [error, setError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [pageScale, setPageScale] = useState<number>(1.2);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const textLayerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const renderedPagesRef = useRef<Set<number>>(new Set());
+
+  // Measure container and compute fit-to-width scale
+  const computeFitScale = useCallback(async (doc: any) => {
+    if (!containerRef.current || !doc) return;
+    try {
+      const firstPage = await doc.getPage(1);
+      const unscaledViewport = firstPage.getViewport({ scale: 1.0 });
+      const containerWidth = containerRef.current.clientWidth;
+      const horizontalPadding = containerWidth < 640 ? 24 : 48;
+      const targetWidth = Math.max(containerWidth - horizontalPadding, 280);
+      
+      // Calculate scale to fit page width to container without side scrolling
+      const fitScale = targetWidth / unscaledViewport.width;
+      setPageScale(Math.min(Math.max(fitScale, 0.4), 2.5));
+    } catch (e) {
+      console.warn("Could not calculate fit scale:", e);
+    }
+  }, []);
+
+  // Handle window/container resize
+  useEffect(() => {
+    if (!containerRef.current || !pdfDoc) return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      computeFitScale(pdfDoc);
+    });
+
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, [pdfDoc, computeFitScale]);
 
   // Load PDF Document
   useEffect(() => {
@@ -73,6 +98,7 @@ export function PdfRenderer({
 
         setPdfDoc(doc);
         setNumPages(doc.numPages);
+        await computeFitScale(doc);
       } catch (err: any) {
         console.error("Error loading PDF:", err);
         if (!isCancelled) {
@@ -89,11 +115,11 @@ export function PdfRenderer({
     return () => {
       isCancelled = true;
     };
-  }, [file]);
+  }, [file, computeFitScale]);
 
-  // Render individual page canvas & textLayer
+  // Render individual page canvas with Device Pixel Ratio and matching textLayer
   const renderPage = useCallback(async (pageNum: number) => {
-    if (!pdfDoc || renderedPagesRef.current.has(pageNum)) return;
+    if (!pdfDoc) return;
 
     try {
       const page = await pdfDoc.getPage(pageNum);
@@ -102,35 +128,43 @@ export function PdfRenderer({
 
       if (!canvas || !textLayerDiv) return;
 
-      const scale = 1.5;
-      const viewport = page.getViewport({ scale });
+      const baseScale = pageScale;
+      const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+      
+      // Render canvas at full device pixel density for crisp retina display
+      const renderViewport = page.getViewport({ scale: baseScale * dpr });
+      // CSS viewport for exact 1:1 layout matching
+      const cssViewport = page.getViewport({ scale: baseScale });
 
-      // Canvas setup
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      canvas.style.width = `${viewport.width}px`;
-      canvas.style.height = `${viewport.height}px`;
+      // Canvas dimensions
+      canvas.width = Math.floor(renderViewport.width);
+      canvas.height = Math.floor(renderViewport.height);
+      canvas.style.width = `${Math.floor(cssViewport.width)}px`;
+      canvas.style.height = `${Math.floor(cssViewport.height)}px`;
 
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d', { alpha: false });
       if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
         await page.render({
           canvasContext: ctx,
-          viewport,
+          viewport: renderViewport,
         }).promise;
       }
 
-      // Text Layer setup
+      // Text Layer setup: identical scale and dimensions
       textLayerDiv.innerHTML = '';
-      textLayerDiv.style.width = `${viewport.width}px`;
-      textLayerDiv.style.height = `${viewport.height}px`;
-      textLayerDiv.style.setProperty('--scale-factor', `${scale}`);
+      textLayerDiv.style.width = `${Math.floor(cssViewport.width)}px`;
+      textLayerDiv.style.height = `${Math.floor(cssViewport.height)}px`;
+      textLayerDiv.style.setProperty('--scale-factor', `${baseScale}`);
 
       const textContent = await page.getTextContent();
 
       await pdfjsLib.renderTextLayer({
         textContentSource: textContent,
         container: textLayerDiv,
-        viewport,
+        viewport: cssViewport,
         textDivs: [],
       }).promise;
 
@@ -138,15 +172,16 @@ export function PdfRenderer({
     } catch (err) {
       console.error(`Error rendering page ${pageNum}:`, err);
     }
-  }, [pdfDoc]);
+  }, [pdfDoc, pageScale]);
 
-  // Trigger rendering for all pages when PDF document is ready
+  // Trigger rendering when PDF document or page scale changes
   useEffect(() => {
     if (!pdfDoc || numPages === 0) return;
+    renderedPagesRef.current.clear();
     for (let p = 1; p <= numPages; p++) {
       renderPage(p);
     }
-  }, [pdfDoc, numPages, renderPage]);
+  }, [pdfDoc, numPages, pageScale, renderPage]);
 
   // Apply search match highlighting across all rendered text layers
   useEffect(() => {
@@ -162,7 +197,6 @@ export function PdfRenderer({
       const spans = textLayerDiv.querySelectorAll('span');
 
       spans.forEach((span) => {
-        // If query is empty, remove existing marks and restore text
         if (!query) {
           if (span.querySelector('mark')) {
             span.textContent = span.textContent;
@@ -204,7 +238,7 @@ export function PdfRenderer({
     if (onMatchesFound) {
       onMatchesFound(totalMatches);
     }
-  }, [searchQuery, currentMatchIndex, loading, numPages, onMatchesFound]);
+  }, [searchQuery, currentMatchIndex, loading, numPages, pageScale, onMatchesFound]);
 
   // Scroll to active match when currentMatchIndex changes
   useEffect(() => {
@@ -241,16 +275,16 @@ export function PdfRenderer({
   return (
     <div 
       ref={containerRef}
-      className="flex-1 w-full h-full overflow-auto p-4 md:p-8 scroll-smooth custom-scrollbar bg-[var(--surface)] flex flex-col items-center"
+      className="flex-1 w-full h-full overflow-y-auto overflow-x-hidden p-3 sm:p-6 md:p-8 scroll-smooth custom-scrollbar bg-[var(--surface)] flex flex-col items-center"
     >
       {loading && (
         <div className="flex flex-col items-center justify-center my-auto py-12 gap-3 text-muted-foreground">
           <Loader2 className="w-6 h-6 animate-spin text-[var(--annotation)]" />
-          <span className="text-xs font-mono">Rendering document pages...</span>
+          <span className="text-xs font-mono">Rendering high-resolution pages...</span>
         </div>
       )}
 
-      <div className="space-y-6 pb-20 w-fit max-w-full">
+      <div className="space-y-6 pb-20 w-fit max-w-full flex flex-col items-center">
         {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
           const isPageRef = highlightedPage === pageNum;
 
