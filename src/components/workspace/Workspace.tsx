@@ -9,6 +9,7 @@ import { AiPanel } from "@/components/workspace/AiPanel";
 import { DocumentViewer } from "@/components/workspace/DocumentViewer";
 
 import { extractPdfTextClient } from "@/lib/extract/clientExtract";
+import { fetchDocumentSummary } from "@/lib/ai/client";
 
 export function Workspace() {
   const searchParams = useSearchParams();
@@ -85,19 +86,8 @@ export function Workspace() {
           setExtractedText(finalExtractedText);
           
           setStatus('analyzing');
-          const summaryRes = await fetch('/api/summarize', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: finalExtractedText, mode: 'medium' })
-          });
-          
-          const summaryData = await summaryRes.json();
-          if (!summaryRes.ok || summaryData.error) {
-            throw new Error(summaryData.error || "AI service is currently unavailable, please try again.");
-          }
-          
           setStatus('summarizing');
-          useDocumentStore.getState().setSummaryData(summaryData);
+          await fetchDocumentSummary(finalExtractedText, 'medium');
           setStatus('done');
           
         } catch (error: any) {

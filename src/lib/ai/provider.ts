@@ -34,6 +34,12 @@ export function getAiModel(modelOverride?: string) {
   return null;
 }
 
+const LENGTH_INSTRUCTIONS: Record<'short' | 'medium' | 'long', string> = {
+  short: "Length Mode: SHORT\nRequirement: Provide a 1-paragraph summary consisting of exactly 2-3 concise sentences giving a high-level overview.",
+  medium: "Length Mode: MEDIUM\nRequirement: Provide a comprehensive executive summary structured across 2 to 3 informative paragraphs covering key themes, methods, and outcomes.",
+  long: "Length Mode: LONG\nRequirement: Provide a detailed, in-depth multi-paragraph analysis covering all major sections, findings, and nuances systematically."
+};
+
 export async function generateDocumentSummary(
   text: string, 
   mode: "short" | "medium" | "long",
@@ -55,16 +61,27 @@ export async function generateDocumentSummary(
     throw new Error("No AI API key found. Please configure GROQ_API_KEY in your hosting environment variables.");
   }
 
-  const truncated = text.slice(0, 10000);
+  const truncated = text.slice(0, 15000);
+  const lengthInstruction = LENGTH_INSTRUCTIONS[mode] || LENGTH_INSTRUCTIONS.medium;
+
   const prompt = `${systemPrompt}
 
-Mode: ${mode}
+${lengthInstruction}
 
 Document Text:
 ${truncated}
 
-Respond ONLY with valid JSON in this exact format, no other text:
-{"summary": "...", "keyPoints": ["point1", "point2", "point3"], "documentType": "..."}`;
+Output Format:
+Respond ONLY with valid JSON in this exact structure, with no markdown code blocks or additional text:
+{
+  "summary": "...",
+  "keyPoints": [
+    "Critical key point 1",
+    "Critical key point 2",
+    "Critical key point 3"
+  ],
+  "documentType": "Document Classification (e.g. Technical Lecture Notes, Research Paper, Resume, Invoice, Legal Contract, Financial Report)"
+}`;
 
   const candidateModels = groqKey
     ? ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b", "groq/compound-mini"]

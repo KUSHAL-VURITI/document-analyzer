@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { ChatTab } from "./ChatTab";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { fetchDocumentSummary } from "@/lib/ai/client";
 
 export function AiPanel() {
   const { summaryData, summaryMode, extractedText, file, setFile } = useDocumentStore();
@@ -172,25 +173,14 @@ export function AiPanel() {
                     key={mode}
                     onClick={async () => {
                       if (isRegenerating || mode === summaryMode) return;
+                      const text = useDocumentStore.getState().extractedText;
+                      if (!text) return;
+                      
                       setIsRegenerating(true);
                       try {
-                        useDocumentStore.getState().setSummaryMode(mode as 'short' | 'medium' | 'long');
-                        const summaryRes = await fetch('/api/summarize', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ 
-                            text: useDocumentStore.getState().extractedText, 
-                            mode: mode 
-                          })
-                        });
-                        
-                        if (!summaryRes.ok) throw new Error("Failed to regenerate summary.");
-                        const data = await summaryRes.json();
-                        if (data.error) throw new Error(data.error);
-                        
-                        useDocumentStore.getState().setSummaryData(data);
+                        await fetchDocumentSummary(text, mode as 'short' | 'medium' | 'long');
                       } catch (e) {
-                        console.error("Failed to regenerate", e);
+                        console.error("Failed to regenerate summary:", e);
                       } finally {
                         setIsRegenerating(false);
                       }
