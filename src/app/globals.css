@@ -361,10 +361,7 @@
 .textLayer {
   position: absolute;
   text-align: initial;
-  left: 0;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   overflow: hidden;
   opacity: 1;
   line-height: 1;
@@ -377,12 +374,17 @@
   user-select: text;
 }
 
-.textLayer span {
+.textLayer :is(span, br) {
   color: transparent !important;
   position: absolute;
   white-space: pre;
   cursor: text;
   transform-origin: 0% 0%;
+}
+
+.textLayer span.markedContent {
+  top: 0;
+  height: 0;
 }
 
 .textLayer ::selection {
@@ -391,29 +393,24 @@
 
 .textLayer mark.search-match {
   color: transparent !important;
-  background-color: rgba(245, 158, 11, 0.4) !important;
+  background-color: rgba(245, 158, 11, 0.45) !important;
   border-radius: 2px;
-  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.6);
   display: inline;
-  position: static;
 }
 
 .dark .textLayer mark.search-match {
-  background-color: rgba(245, 158, 11, 0.45) !important;
-  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.7);
+  background-color: rgba(245, 158, 11, 0.55) !important;
 }
 
 .textLayer mark.search-match-active {
   color: transparent !important;
-  background-color: rgba(59, 91, 219, 0.55) !important;
+  background-color: rgba(59, 91, 219, 0.65) !important;
   box-shadow: 0 0 0 2px var(--annotation) !important;
   border-radius: 2px;
   display: inline;
-  position: static;
-  z-index: 10;
 }
 
 .dark .textLayer mark.search-match-active {
-  background-color: rgba(107, 138, 250, 0.65) !important;
+  background-color: rgba(107, 138, 250, 0.75) !important;
   box-shadow: 0 0 0 2px var(--annotation) !important;
 }

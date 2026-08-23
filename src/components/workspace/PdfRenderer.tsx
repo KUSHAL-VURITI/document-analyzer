@@ -28,41 +28,51 @@ export function PdfRenderer({
   const [error, setError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
-  const [pageScale, setPageScale] = useState<number>(1.2);
+  const [pageScale, setPageScale] = useState<number>(1.0);
+  const [pageDimensions, setPageDimensions] = useState<Map<number, { width: number; height: number }>>(new Map());
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const pageContainerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const textLayerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const renderedPagesRef = useRef<Set<number>>(new Set());
 
-  // Measure container and compute fit-to-width scale
+  // Compute precise fit-to-width scale matching the viewer panel
   const computeFitScale = useCallback(async (doc: any) => {
     if (!containerRef.current || !doc) return;
     try {
       const firstPage = await doc.getPage(1);
       const unscaledViewport = firstPage.getViewport({ scale: 1.0 });
-      const containerWidth = containerRef.current.clientWidth;
-      const horizontalPadding = containerWidth < 640 ? 24 : 48;
-      const targetWidth = Math.max(containerWidth - horizontalPadding, 280);
+      const clientWidth = containerRef.current.clientWidth;
       
-      // Calculate scale to fit page width to container without side scrolling
-      const fitScale = targetWidth / unscaledViewport.width;
-      setPageScale(Math.min(Math.max(fitScale, 0.4), 2.5));
+      // Reserve 40px for padding and scrollbar clearance
+      const availableWidth = Math.max(clientWidth - 40, 260);
+      const fitScale = availableWidth / unscaledViewport.width;
+      
+      setPageScale(fitScale);
     } catch (e) {
       console.warn("Could not calculate fit scale:", e);
     }
   }, []);
 
-  // Handle window/container resize
+  // ResizeObserver on the viewer container for dynamic window/panel resizing
   useEffect(() => {
-    if (!containerRef.current || !pdfDoc) return;
+    const el = containerRef.current;
+    if (!el || !pdfDoc) return;
 
+    let timeoutId: any = null;
     const resizeObserver = new ResizeObserver(() => {
-      computeFitScale(pdfDoc);
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        computeFitScale(pdfDoc);
+      }, 100);
     });
 
-    resizeObserver.observe(containerRef.current);
-    return () => resizeObserver.disconnect();
+    resizeObserver.observe(el);
+    return () => {
+      clearTimeout(timeoutId);
+      resizeObserver.disconnect();
+    };
   }, [pdfDoc, computeFitScale]);
 
   // Load PDF Document
@@ -125,22 +135,33 @@ export function PdfRenderer({
       const page = await pdfDoc.getPage(pageNum);
       const canvas = canvasRefs.current.get(pageNum);
       const textLayerDiv = textLayerRefs.current.get(pageNum);
+      const pageContainer = pageContainerRefs.current.get(pageNum);
 
       if (!canvas || !textLayerDiv) return;
 
       const baseScale = pageScale;
       const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
       
-      // Render canvas at full device pixel density for crisp retina display
+      // High-DPI render viewport for crisp text
       const renderViewport = page.getViewport({ scale: baseScale * dpr });
-      // CSS viewport for exact 1:1 layout matching
+      // Exact CSS display viewport
       const cssViewport = page.getViewport({ scale: baseScale });
 
-      // Canvas dimensions
-      canvas.width = Math.floor(renderViewport.width);
-      canvas.height = Math.floor(renderViewport.height);
-      canvas.style.width = `${Math.floor(cssViewport.width)}px`;
-      canvas.style.height = `${Math.floor(cssViewport.height)}px`;
+      const cssWidth = Math.round(cssViewport.width);
+      const cssHeight = Math.round(cssViewport.height);
+
+      // Lock container dimensions
+      if (pageContainer) {
+        pageContainer.style.width = `${cssWidth}px`;
+        pageContainer.style.height = `${cssHeight}px`;
+      }
+
+      // Lock canvas dimensions
+      canvas.width = Math.round(renderViewport.width);
+      canvas.height = Math.round(renderViewport.height);
+      canvas.style.width = `${cssWidth}px`;
+      canvas.style.height = `${cssHeight}px`;
+      canvas.style.display = 'block';
 
       const ctx = canvas.getContext('2d', { alpha: false });
       if (ctx) {
@@ -153,10 +174,10 @@ export function PdfRenderer({
         }).promise;
       }
 
-      // Text Layer setup: identical scale and dimensions
+      // Lock text layer dimensions and transform origin
       textLayerDiv.innerHTML = '';
-      textLayerDiv.style.width = `${Math.floor(cssViewport.width)}px`;
-      textLayerDiv.style.height = `${Math.floor(cssViewport.height)}px`;
+      textLayerDiv.style.width = `${cssWidth}px`;
+      textLayerDiv.style.height = `${cssHeight}px`;
       textLayerDiv.style.setProperty('--scale-factor', `${baseScale}`);
 
       const textContent = await page.getTextContent();
@@ -168,6 +189,7 @@ export function PdfRenderer({
         textDivs: [],
       }).promise;
 
+      setPageDimensions(prev => new Map(prev).set(pageNum, { width: cssWidth, height: cssHeight }));
       renderedPagesRef.current.add(pageNum);
     } catch (err) {
       console.error(`Error rendering page ${pageNum}:`, err);
@@ -275,7 +297,7 @@ export function PdfRenderer({
   return (
     <div 
       ref={containerRef}
-      className="flex-1 w-full h-full overflow-y-auto overflow-x-hidden p-3 sm:p-6 md:p-8 scroll-smooth custom-scrollbar bg-[var(--surface)] flex flex-col items-center"
+      className="flex-1 w-full h-full overflow-y-auto overflow-x-hidden p-3 sm:p-5 scroll-smooth custom-scrollbar bg-[var(--surface)] flex flex-col items-center"
     >
       {loading && (
         <div className="flex flex-col items-center justify-center my-auto py-12 gap-3 text-muted-foreground">
@@ -284,7 +306,7 @@ export function PdfRenderer({
         </div>
       )}
 
-      <div className="space-y-6 pb-20 w-fit max-w-full flex flex-col items-center">
+      <div className="space-y-6 pb-20 w-full flex flex-col items-center">
         {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
           const isPageRef = highlightedPage === pageNum;
 
@@ -292,11 +314,18 @@ export function PdfRenderer({
             <div
               key={pageNum}
               id={`pdf-page-${pageNum}`}
-              className={`relative bg-white dark:bg-card border rounded-lg shadow-sm transition-all duration-500 overflow-hidden ${
+              ref={(el) => {
+                if (el) pageContainerRefs.current.set(pageNum, el);
+                else pageContainerRefs.current.delete(pageNum);
+              }}
+              className={`relative bg-white dark:bg-card rounded-lg shadow-sm transition-all duration-300 overflow-hidden ${
                 isPageRef 
                   ? 'ring-2 ring-[var(--annotation)] shadow-lg shadow-[var(--annotation)]/15 scale-[1.005]' 
-                  : 'border-[var(--border)]'
+                  : 'ring-1 ring-[var(--border)]'
               }`}
+              style={{
+                boxSizing: 'border-box',
+              }}
             >
               {/* Page header tag */}
               <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded bg-black/60 backdrop-blur-xs text-[10px] font-mono text-white/90 select-none pointer-events-none">
@@ -309,7 +338,11 @@ export function PdfRenderer({
                   if (el) canvasRefs.current.set(pageNum, el);
                   else canvasRefs.current.delete(pageNum);
                 }}
-                className="block max-w-full h-auto"
+                className="block"
+                style={{
+                  margin: 0,
+                  padding: 0,
+                }}
               />
 
               {/* Text Layer for Selection & Highlights */}
@@ -319,6 +352,13 @@ export function PdfRenderer({
                   else textLayerRefs.current.delete(pageNum);
                 }}
                 className="textLayer"
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  margin: 0,
+                  padding: 0,
+                }}
               />
             </div>
           );
