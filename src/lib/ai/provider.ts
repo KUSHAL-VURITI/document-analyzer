@@ -9,8 +9,17 @@ export interface SummaryResult {
 }
 
 export function getAiModel(modelOverride?: string) {
-  const groqKey = process.env.GROQ_API_KEY?.trim();
-  const geminiKey = (process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY)?.trim();
+  const groqKey = (
+    process.env.GROQ_API_KEY || 
+    process.env.NEXT_PUBLIC_GROQ_API_KEY || 
+    process.env.groq_api_key
+  )?.trim();
+
+  const geminiKey = (
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY || 
+    process.env.GEMINI_API_KEY || 
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY
+  )?.trim();
 
   if (groqKey) {
     const groq = createGroq({ apiKey: groqKey });
@@ -30,8 +39,17 @@ export async function generateDocumentSummary(
   mode: "short" | "medium" | "long",
   systemPrompt: string
 ): Promise<SummaryResult> {
-  const groqKey = process.env.GROQ_API_KEY?.trim();
-  const geminiKey = (process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY)?.trim();
+  const groqKey = (
+    process.env.GROQ_API_KEY || 
+    process.env.NEXT_PUBLIC_GROQ_API_KEY || 
+    process.env.groq_api_key
+  )?.trim();
+
+  const geminiKey = (
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY || 
+    process.env.GEMINI_API_KEY || 
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY
+  )?.trim();
 
   if (!groqKey && !geminiKey) {
     throw new Error("No AI API key found. Please configure GROQ_API_KEY in your hosting environment variables.");
