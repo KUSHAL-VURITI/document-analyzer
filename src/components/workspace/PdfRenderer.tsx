@@ -34,7 +34,7 @@ export function PdfRenderer({
   const pageContainerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const textLayerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
-  const renderedPagesRef = useRef<Set<number>>(new Set());
+  const pageTextContentRef = useRef<Map<number, any>>(new Map());
 
   // Compute precise fit-to-width scale matching the viewer panel
   const computeFitScale = useCallback(async (doc: any) => {
@@ -82,7 +82,7 @@ export function PdfRenderer({
       if (!file) return;
       setLoading(true);
       setError(null);
-      renderedPagesRef.current.clear();
+      pageTextContentRef.current.clear();
 
       try {
         let docData: ArrayBuffer;
@@ -126,17 +126,16 @@ export function PdfRenderer({
     };
   }, [file, computeFitScale]);
 
-  // Render individual page canvas with Device Pixel Ratio and matching textLayer
+  // Render individual page canvas and store text content
   const renderPage = useCallback(async (pageNum: number) => {
     if (!pdfDoc) return;
 
     try {
       const page = await pdfDoc.getPage(pageNum);
       const canvas = canvasRefs.current.get(pageNum);
-      const textLayerDiv = textLayerRefs.current.get(pageNum);
       const pageContainer = pageContainerRefs.current.get(pageNum);
 
-      if (!canvas || !textLayerDiv) return;
+      if (!canvas) return;
 
       const baseScale = pageScale;
       const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
@@ -173,22 +172,9 @@ export function PdfRenderer({
         }).promise;
       }
 
-      // Lock text layer dimensions and transform origin
-      textLayerDiv.innerHTML = '';
-      textLayerDiv.style.width = `${cssWidth}px`;
-      textLayerDiv.style.height = `${cssHeight}px`;
-      textLayerDiv.style.setProperty('--scale-factor', `${baseScale}`);
-
+      // Fetch and cache text content
       const textContent = await page.getTextContent();
-
-      await pdfjsLib.renderTextLayer({
-        textContentSource: textContent,
-        container: textLayerDiv,
-        viewport: cssViewport,
-        textDivs: [],
-      }).promise;
-
-      renderedPagesRef.current.add(pageNum);
+      pageTextContentRef.current.set(pageNum, { textContent, viewport: cssViewport });
     } catch (err) {
       console.error(`Error rendering page ${pageNum}:`, err);
     }
@@ -197,14 +183,12 @@ export function PdfRenderer({
   // Trigger rendering when PDF document or page scale changes
   useEffect(() => {
     if (!pdfDoc || numPages === 0) return;
-    renderedPagesRef.current.clear();
     for (let p = 1; p <= numPages; p++) {
       renderPage(p);
     }
   }, [pdfDoc, numPages, pageScale, renderPage]);
 
-  // Apply search match highlighting across all rendered text layers
-  // Deduplicates matches by processing only top-level direct child text elements
+  // Render textLayer and search highlights directly with exact affine matrix transforms
   useEffect(() => {
     if (loading || numPages === 0) return;
 
@@ -213,43 +197,84 @@ export function PdfRenderer({
 
     for (let pageNum = 1; pageNum <= numPages; pageNum++) {
       const textLayerDiv = textLayerRefs.current.get(pageNum);
-      if (!textLayerDiv) continue;
+      const pageData = pageTextContentRef.current.get(pageNum);
 
-      // Select ONLY direct child SPAN elements to prevent double counting parent + child
-      const directSpans = Array.from(textLayerDiv.children).filter(
-        (el) => el.tagName === 'SPAN' && !el.classList.contains('markedContent')
-      ) as HTMLElement[];
+      if (!textLayerDiv || !pageData) continue;
 
-      directSpans.forEach((span) => {
-        // Clean any existing marks first to read clean original text
-        if (span.querySelector('mark')) {
-          span.textContent = span.textContent;
+      const { textContent, viewport } = pageData;
+      const cssWidth = Math.round(viewport.width);
+      const cssHeight = Math.round(viewport.height);
+
+      textLayerDiv.innerHTML = '';
+      textLayerDiv.style.width = `${cssWidth}px`;
+      textLayerDiv.style.height = `${cssHeight}px`;
+      textLayerDiv.style.position = 'absolute';
+      textLayerDiv.style.top = '0px';
+      textLayerDiv.style.left = '0px';
+      textLayerDiv.style.overflow = 'hidden';
+      textLayerDiv.style.lineHeight = '1';
+      textLayerDiv.style.userSelect = 'text';
+
+      textContent.items.forEach((item: any) => {
+        if (!item.str && item.str !== ' ') return;
+
+        // Exact affine coordinate transformation from PDF space to viewport pixel space
+        const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+        const fontHeight = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+        const left = tx[4];
+        const top = tx[5] - fontHeight;
+
+        const span = document.createElement('span');
+        span.style.position = 'absolute';
+        span.style.left = `${left}px`;
+        span.style.top = `${top}px`;
+        span.style.fontSize = `${fontHeight}px`;
+        span.style.fontFamily = item.fontName || 'sans-serif';
+        span.style.transformOrigin = '0% 0%';
+        span.style.whiteSpace = 'pre';
+        span.style.color = 'transparent';
+        span.style.lineHeight = '1';
+        span.style.cursor = 'text';
+
+        // Apply any rotation/skew if present
+        if (item.transform[1] !== 0 || item.transform[2] !== 0) {
+          const a = tx[0] / fontHeight;
+          const b = tx[1] / fontHeight;
+          const c = tx[2] / fontHeight;
+          const d = tx[3] / fontHeight;
+          span.style.transform = `matrix(${a}, ${b}, ${c}, ${d}, 0, 0)`;
         }
 
-        if (!query) return;
+        const rawText = item.str;
 
-        const text = span.textContent || '';
-        if (!text.toLowerCase().includes(query)) return;
+        if (query && rawText.toLowerCase().includes(query)) {
+          const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const regex = new RegExp(`(${escaped})`, 'gi');
+          const parts = rawText.split(regex);
 
-        const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`(${escaped})`, 'gi');
-        const parts = text.split(regex);
+          parts.forEach((part: string) => {
+            if (part.toLowerCase() === query) {
+              const matchIdx = totalMatches;
+              totalMatches++;
 
-        span.innerHTML = '';
-        parts.forEach((part) => {
-          if (part.toLowerCase() === query) {
-            const matchIdx = totalMatches;
-            totalMatches++;
+              const mark = document.createElement('mark');
+              mark.id = `pdf-match-${matchIdx}`;
+              mark.className = 'search-match';
+              mark.style.color = 'transparent';
+              mark.style.backgroundColor = 'rgba(245, 158, 11, 0.45)';
+              mark.style.borderRadius = '2px';
+              mark.style.display = 'inline';
+              mark.textContent = part;
+              span.appendChild(mark);
+            } else if (part) {
+              span.appendChild(document.createTextNode(part));
+            }
+          });
+        } else {
+          span.textContent = rawText;
+        }
 
-            const mark = document.createElement('mark');
-            mark.id = `pdf-match-${matchIdx}`;
-            mark.className = 'search-match';
-            mark.textContent = part;
-            span.appendChild(mark);
-          } else if (part) {
-            span.appendChild(document.createTextNode(part));
-          }
-        });
+        textLayerDiv.appendChild(span);
       });
     }
 
@@ -258,18 +283,24 @@ export function PdfRenderer({
     }
   }, [searchQuery, loading, numPages, pageScale, onMatchesFound]);
 
-  // Update active match class and scroll to active match
+  // Update active match styling and scroll target into view
   useEffect(() => {
     if (!searchQuery || searchQuery.trim().length === 0) return;
 
-    // Remove active class from all marks
-    const allMarks = document.querySelectorAll('.textLayer mark.search-match-active');
-    allMarks.forEach((m) => m.classList.remove('search-match-active'));
+    // Reset previous active marks
+    const allActiveMarks = document.querySelectorAll('.textLayer mark.search-match-active');
+    allActiveMarks.forEach((m: any) => {
+      m.classList.remove('search-match-active');
+      m.style.backgroundColor = 'rgba(245, 158, 11, 0.45)';
+      m.style.boxShadow = 'none';
+    });
 
-    // Highlight target mark
+    // Apply active highlight styling
     const targetMatch = document.getElementById(`pdf-match-${currentMatchIndex}`);
     if (targetMatch) {
       targetMatch.classList.add('search-match-active');
+      targetMatch.style.backgroundColor = 'rgba(59, 91, 219, 0.65)';
+      targetMatch.style.boxShadow = '0 0 0 2px var(--annotation)';
       targetMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [currentMatchIndex, searchQuery]);
@@ -327,6 +358,7 @@ export function PdfRenderer({
               }`}
               style={{
                 boxSizing: 'border-box',
+                position: 'relative',
               }}
             >
               {/* Page header tag */}
