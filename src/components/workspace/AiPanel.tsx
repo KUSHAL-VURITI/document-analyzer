@@ -30,8 +30,11 @@ export function AiPanel() {
 
   if (!summaryData) return null;
 
-  const wordCount = extractedText ? extractedText.split(/\s+/).filter(Boolean).length : 0;
+  const docWordCount = extractedText ? extractedText.split(/\s+/).filter(Boolean).length : 0;
+  const summaryWordCount = summaryData?.summary ? summaryData.summary.split(/\s+/).filter(Boolean).length : 0;
   const pages = extractedText ? extractedText.split('---PAGE_BREAK---').map(p => p.trim()).filter(Boolean).length : 0;
+  const compressionPct = docWordCount > 0 ? Math.max(0, Math.round((1 - summaryWordCount / docWordCount) * 100)) : 0;
+  const readingTimeMin = Math.max(1, Math.ceil(summaryWordCount / 200));
 
   const dateRegex = /\b(19|20)\d{2}\b/g;
   const dates = extractedText ? Array.from(new Set(extractedText.match(dateRegex) || [])).slice(0, 5) : [];
@@ -80,29 +83,30 @@ export function AiPanel() {
             <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
               <span className="flex items-center gap-1.5">
                 <Hash className="w-3 h-3" />
-                {wordCount.toLocaleString()} words
+                {docWordCount.toLocaleString()} doc words
               </span>
             </div>
           </div>
         </div>
 
         {/* Actions: Theme Toggle & Standout Prominent New Document Button */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <ThemeToggle />
           <button
             onClick={handleNewDocumentClick}
-            className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-[var(--annotation)] text-[var(--accent-foreground)] hover:bg-[var(--accent-hover)] active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-[var(--annotation)] focus:ring-offset-1 cursor-pointer shadow-sm hover:shadow-md"
+            className="shrink-0 inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 text-xs font-semibold rounded-lg bg-[var(--annotation)] text-[var(--accent-foreground)] hover:bg-[var(--accent-hover)] active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-[var(--annotation)] focus:ring-offset-1 cursor-pointer shadow-sm hover:shadow-md"
             title="Upload a new document directly"
           >
             <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-            New Document
+            <span className="hidden sm:inline">New Document</span>
+            <span className="sm:hidden">Upload</span>
           </button>
         </div>
       </div>
 
       <Tabs defaultValue="summary" className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Tab bar — underline style (Summary, Key Points, Ask) */}
-        <div className="px-5 shrink-0 border-b border-[var(--border)]">
+        <div className="px-4 sm:px-5 shrink-0 border-b border-[var(--border)]">
           <TabsList className="w-full bg-transparent p-0 h-11 rounded-none gap-0 shadow-none border-none">
             {[
               { value: "summary", icon: Sparkles, label: "Summary" },
@@ -123,16 +127,26 @@ export function AiPanel() {
 
         <div className="flex-1 overflow-auto custom-scrollbar">
           {/* Merged Summary Tab with Integrated Insights */}
-          <TabsContent value="summary" className="m-0 p-5 space-y-4 h-full focus-visible:outline-none focus-visible:ring-0 animate-in fade-in slide-in-from-right-3 duration-300">
-            {/* Integrated Insights: Compact Grid of Metric Cards */}
-            <div className="grid grid-cols-2 gap-2">
+          <TabsContent value="summary" className="m-0 p-4 sm:p-5 space-y-4 h-full focus-visible:outline-none focus-visible:ring-0 animate-in fade-in slide-in-from-right-3 duration-300">
+            {/* Integrated Insights: Metric Cards */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="flex flex-col p-2.5 bg-card border border-[var(--border)] rounded-lg shadow-sm hover-lift transition-smooth">
+                <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <Sparkles className="w-3 h-3 text-[var(--annotation)]" />
+                  <span>Summary</span>
+                </div>
+                <span className="text-sm font-semibold font-mono text-foreground mt-0.5">
+                  {summaryWordCount.toLocaleString()} <span className="text-[10px] font-normal text-muted-foreground font-sans">words</span>
+                </span>
+              </div>
+
               <div className="flex flex-col p-2.5 bg-card border border-[var(--border)] rounded-lg shadow-sm hover-lift transition-smooth">
                 <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                   <Hash className="w-3 h-3" />
-                  <span>Words</span>
+                  <span>Doc Words</span>
                 </div>
                 <span className="text-sm font-semibold font-mono text-foreground mt-0.5">
-                  {wordCount.toLocaleString()}
+                  {docWordCount.toLocaleString()}
                 </span>
               </div>
 
@@ -173,14 +187,51 @@ export function AiPanel() {
                     key={mode}
                     onClick={async () => {
                       if (isRegenerating || mode === summaryMode) return;
-                      const text = useDocumentStore.getState().extractedText;
-                      if (!text) return;
                       
                       setIsRegenerating(true);
                       try {
-                        await fetchDocumentSummary(text, mode as 'short' | 'medium' | 'long');
-                      } catch (e) {
+                        if (isDemo) {
+                          // Instant precomputed summaries for demo mode
+                          await new Promise(r => setTimeout(r, 250));
+                          const demoSummaries = {
+                            short: {
+                              summary: "The Q4 Financial Report highlights strong performance led by a 15% revenue expansion in the enterprise segment. Operating expenses were reduced by 2%, contributing to increased profitability.",
+                              keyPoints: [
+                                "15% revenue increase driven by enterprise segment",
+                                "Operating expenses decreased by 2%"
+                              ],
+                              documentType: "Financial Report"
+                            },
+                            medium: {
+                              summary: "This document discusses various financial metrics and strategic initiatives for Q4. It highlights a 15% increase in revenue compared to the previous quarter, driven largely by the enterprise segment.\n\nOperating costs decreased by 2% across infrastructure and administrative channels, improving gross margins and positioning the company favorably for sustained growth.",
+                              keyPoints: [
+                                "Q4 revenue increased by 15%",
+                                "Enterprise segment is the primary growth driver",
+                                "Operating costs decreased by 2%"
+                              ],
+                              documentType: "Financial Report"
+                            },
+                            long: {
+                              summary: "The Q4 Financial Report presents an in-depth financial analysis detailing core growth drivers, cost optimizations, and capital allocations across all operational segments.\n\nTotal revenue demonstrated a 15% year-over-year expansion, catalyzed primarily by high-ticket enterprise contracts and accelerated digital adoption. Customer retention remained above 94%, with net revenue retention tracking at 118%.\n\nOn the expenditure side, operational overhead dropped by 2%, driven by automated workflow deployments and vendor consolidation. Net profit margins widened by 320 basis points, ensuring robust liquidity for upcoming strategic initiatives.",
+                              keyPoints: [
+                                "Q4 revenue grew 15% year-over-year fueled by enterprise sales",
+                                "Operating expenses reduced by 2% through workflow automation",
+                                "Net profit margins expanded by 320 basis points",
+                                "Customer retention remained exceptionally strong at 94%"
+                              ],
+                              documentType: "Financial Report"
+                            }
+                          };
+                          useDocumentStore.getState().setSummaryMode(mode as 'short' | 'medium' | 'long');
+                          useDocumentStore.getState().setSummaryData(demoSummaries[mode as keyof typeof demoSummaries]);
+                        } else {
+                          const text = useDocumentStore.getState().extractedText;
+                          if (!text) return;
+                          await fetchDocumentSummary(text, mode as 'short' | 'medium' | 'long');
+                        }
+                      } catch (e: any) {
                         console.error("Failed to regenerate summary:", e);
+                        alert(e.message || "Failed to regenerate summary. Please check your API key or network connection.");
                       } finally {
                         setIsRegenerating(false);
                       }
@@ -199,8 +250,12 @@ export function AiPanel() {
             </div>
 
             {/* Summary text */}
-            <div className="bg-card border border-[var(--border)] rounded-xl p-5 text-sm leading-relaxed text-foreground [&>p]:mb-3 last:[&>p]:mb-0 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:mb-3 [&>ol]:list-decimal [&>ol]:pl-5 [&>ol]:mb-3 [&_strong]:font-semibold shadow-sm hover:border-[var(--annotation)]/20 transition-all duration-300">
+            <div className="bg-card border border-[var(--border)] rounded-xl p-4 sm:p-5 text-sm leading-relaxed text-foreground [&>p]:mb-3 last:[&>p]:mb-0 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:mb-3 [&>ol]:list-decimal [&>ol]:pl-5 [&>ol]:mb-3 [&_strong]:font-semibold shadow-sm hover:border-[var(--annotation)]/20 transition-all duration-300">
               <ReactMarkdown>{summaryData.summary}</ReactMarkdown>
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-3 mt-3 border-t border-[var(--border)]">
+                <span>{summaryWordCount} words</span>
+                <span>~{readingTimeMin} min read ({compressionPct}% condensed)</span>
+              </div>
             </div>
 
             {/* Document suggestion card */}
