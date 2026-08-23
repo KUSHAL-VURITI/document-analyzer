@@ -1,11 +1,6 @@
 import { streamText } from 'ai';
-import { createGroq } from '@ai-sdk/groq';
+import { getAiModel } from '@/lib/ai/provider';
 
-const groq = createGroq({
-  apiKey: process.env.GROQ_API_KEY,
-});
-
-// Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
 
 export async function POST(req: Request) {
@@ -15,8 +10,8 @@ export async function POST(req: Request) {
     return new Response('Missing document text', { status: 400 });
   }
 
-  // Check if API key is present, if not, return explicit error
-  if (!process.env.GROQ_API_KEY) {
+  const model = getAiModel();
+  if (!model) {
     return new Response(
       "AI service is currently unavailable. Please configure GROQ_API_KEY in your hosting environment variables.",
       { 
@@ -39,7 +34,7 @@ ${documentText.slice(0, 10000)}
 `;
 
   const result = await streamText({
-    model: groq('llama-3.3-70b-versatile'),
+    model,
     system: systemPrompt,
     messages,
   });
