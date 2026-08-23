@@ -150,15 +150,20 @@ export function PdfRenderer({
       canvas.style.width = `${cssWidth}px`;
       canvas.style.height = `${cssHeight}px`;
       canvas.style.display = 'block';
+      canvas.style.backgroundColor = '#ffffff';
 
-      const ctx = canvas.getContext('2d', { alpha: false });
+      const ctx = canvas.getContext('2d');
       if (ctx) {
+        // Enforce solid white background on canvas to guarantee proper contrast for transparent PDFs
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
 
         await page.render({
           canvasContext: ctx,
           viewport: renderViewport,
+          background: 'rgb(255, 255, 255)',
         }).promise;
       }
 
@@ -208,11 +213,16 @@ export function PdfRenderer({
       textContent.items.forEach((item: any) => {
         if (!item.str && item.str !== ' ') return;
 
-        // Exact affine coordinate transformation
         const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-        const fontHeight = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+        const fontHeight = Math.sqrt((tx[2] * tx[2]) + (tx[3] * tx[3]));
+        
+        let fontAscent = fontHeight;
+        if (item.fontName && textContent.styles && textContent.styles[item.fontName]) {
+          fontAscent = fontHeight * (textContent.styles[item.fontName].ascent || 1);
+        }
+
+        const top = tx[5] - fontAscent;
         const left = tx[4];
-        const top = tx[5] - fontHeight;
         const targetWidth = item.width * viewport.scale;
 
         const span = document.createElement('span');
@@ -274,7 +284,7 @@ export function PdfRenderer({
     if (onMatchesFound) {
       onMatchesFound(totalMatches);
     }
-  }, [searchQuery, loading, numPages, viewerWidth, onMatchesFound]);
+  }, [searchQuery, currentMatchIndex, loading, numPages, viewerWidth, onMatchesFound]);
 
   // Update active match styling and scroll target into view
   useEffect(() => {
@@ -320,13 +330,24 @@ export function PdfRenderer({
     );
   }
 
+  if (!file) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
+        <AlertCircle className="w-8 h-8 mb-2 opacity-50" />
+        <p className="text-sm">No PDF document selected for preview.</p>
+      </div>
+    );
+  }
+
   return (
     <div 
       ref={containerRef}
-      className="flex-1 w-full h-full overflow-y-auto overflow-x-hidden p-2 sm:p-4 scroll-smooth custom-scrollbar bg-[var(--surface)] flex flex-col items-center"
+      className="flex-1 w-full h-full overflow-y-auto overflow-x-hidden p-3 sm:p-5 scroll-smooth custom-scrollbar bg-[var(--surface)] flex flex-col items-center relative"
+      style={{ minHeight: 0 }}
     >
+      {/* Loading Overlay */}
       {loading && (
-        <div className="flex flex-col items-center justify-center my-auto py-12 gap-3 text-muted-foreground">
+        <div className="absolute inset-0 bg-background/70 backdrop-blur-xs flex flex-col items-center justify-center gap-3 z-30">
           <Loader2 className="w-6 h-6 animate-spin text-[var(--annotation)]" />
           <span className="text-xs font-mono">Rendering high-resolution pages...</span>
         </div>
@@ -344,9 +365,9 @@ export function PdfRenderer({
                 if (el) pageContainerRefs.current.set(pageNum, el);
                 else pageContainerRefs.current.delete(pageNum);
               }}
-              className={`relative bg-white dark:bg-card rounded-lg shadow-sm transition-all duration-300 overflow-hidden ${
+              className={`relative bg-white rounded-lg shadow-md transition-all duration-300 overflow-hidden ${
                 isPageRef 
-                  ? 'ring-2 ring-[var(--annotation)] shadow-lg shadow-[var(--annotation)]/15 scale-[1.005]' 
+                  ? 'ring-2 ring-[var(--annotation)] shadow-lg shadow-[var(--annotation)]/20 scale-[1.005]' 
                   : 'ring-1 ring-[var(--border)]'
               }`}
               style={{
@@ -369,6 +390,7 @@ export function PdfRenderer({
                 style={{
                   margin: 0,
                   padding: 0,
+                  backgroundColor: '#ffffff',
                 }}
               />
 
